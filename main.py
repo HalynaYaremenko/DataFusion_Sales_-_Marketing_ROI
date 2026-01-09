@@ -1,5 +1,10 @@
 import numpy as np
 import pandas as pd
+import db_sql as db
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
 
 monthly_category_sql = '''
 SELECT 
@@ -79,7 +84,18 @@ def clean_marketing_data(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     return clean
 
-csv_path = 'marketing_spend.csv'
-df = clean_marketing_data(load_marketing_csv(csv_path))
 
-print(df)
+def main():
+    csv_path = 'marketing_spend.csv'
+    df = clean_marketing_data(load_marketing_csv(csv_path))
+    print(df)
+
+    orders_sql_path = 'orders.sql'
+    pg_url = os.getenv('POSTGRES_URL')
+    pg_engine = db.get_postgres_engine(pg_url)
+    orders = db.load_orders_postgres(pg_engine)
+
+    print(orders)
+
+if __name__ == '__main__':
+    main()
