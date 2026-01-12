@@ -3,6 +3,8 @@ import pandas as pd
 import db_sql as db
 import os
 
+from sqlalchemy import text
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -93,9 +95,26 @@ def main():
     orders_sql_path = 'orders.sql'
     pg_url = os.getenv('POSTGRES_URL')
     pg_engine = db.get_postgres_engine(pg_url)
-    orders = db.load_orders_postgres(pg_engine)
 
-    print(orders)
+    try:
+        with open(orders_sql_path, 'r', encoding="utf-8") as f:
+            orders_sql = f.read()
+        
+        with pg_engine.connect() as conn:
+            for s in orders_sql.split(';'):
+                s = s.strip()
+                if s:
+                    conn.execute(text(orders_sql))
+         
+        # pd.read_sql(orders_sql_path, con=pg_engine) # створюємо таблицю orders
+    except Exception as e:
+        print(e)
+    
+    # orders = db.load_orders_postgres(pg_engine)
+
+    # print(orders)
+    df = pd.read_sql("SELECT * FROM orders;", con=pg_engine)
+    print(df.head())
 
 if __name__ == '__main__':
     main()
