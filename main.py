@@ -118,7 +118,7 @@ def main():
 
     def agg_sales_monthly(orders_df: pd.DataFrame) -> pd.DataFrame:
         df = orders_df.copy()
-        df['month'] = df['order_date'].dt.to_period("M").dt.to_timestamp()
+        df['month'] = df['order_date'].dt.to_period("M").dt.to_timestamp() # type: ignore
         monthly_sales = df.groupby('month', as_index=False).agg(
             order_count = ('order_id', 'count'),
             total_sales = ('order_amount', 'sum')
@@ -148,8 +148,8 @@ def main():
         )
         return df[['month', "total_sales", "marketing_spend", 'roi']]
     
-    monthly_roi = monthly_roi(sales_marketing)
+    monthly_roi = monthly_roi(sales_marketing) # type: ignore
     monthly_roi.to_csv('monthly_roi.csv', index=False)
-    
+
 if __name__ == '__main__':
     main()
