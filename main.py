@@ -1,12 +1,20 @@
-import numpy as np
-import pandas as pd
-import db_sql as db
 import os
+import db_sql as db
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-from sqlalchemy import text
+# для PostgreSQL
+from sqlalchemy import create_engine, text
 
+# Задайте змінні оточення
 from dotenv import load_dotenv
 load_dotenv()
+
+# для гарних графіків
+sns.set(style="whitegrid", font_scale=1.1)
+plt.rcParams["figure.figsize"] = (12, 6)
 
 monthly_category_sql = '''
 SELECT 
@@ -36,6 +44,8 @@ SELECT
  ORDER BY sum_amount DESC
  LIMIT 3;
 '''
+
+# Завантаження та чистка маркетингових даних
 
 def load_marketing_csv(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
@@ -91,7 +101,7 @@ def main():
     csv_path = 'marketing_spend.csv'
 
     df_marketing_clean = clean_marketing_data(load_marketing_csv(csv_path))
-    print(df_marketing_clean)
+    # print(df_marketing_clean)
 
     orders_sql_path = 'orders.sql'
     pg_url = str(os.getenv('POSTGRES_URL'))
@@ -111,11 +121,12 @@ def main():
         print(e)
     
     orders = db.load_orders_postgres(pg_engine)
-    print(orders)
+    # print(orders)
 
     # df = pd.read_sql("SELECT * FROM orders;", con=pg_engine)
     # print(df.head())
 
+    # # Агрегація продажів помісячно
     def agg_sales_monthly(orders_df: pd.DataFrame) -> pd.DataFrame:
         df = orders_df.copy()
         df['month'] = df['order_date'].dt.to_period("M").dt.to_timestamp() # type: ignore
@@ -128,7 +139,8 @@ def main():
     monthly_sales = agg_sales_monthly(orders)
     # print(monthly_sales)
     monthly_sales.to_csv('monthly_sales.csv',index=False)
-
+    
+    # Об’єднання з маркетинговими витратами (помісячно)
     def merge_sales_marketing(df_marketing_clean: pd.DataFrame, monthly_sales: pd.DataFrame) -> pd.DataFrame:
         df_marketing_clean = df_marketing_clean.groupby('month', as_index=False).agg(
             marketing_spend = ('spend_amount', 'sum')
@@ -138,7 +150,8 @@ def main():
     
     sales_marketing =  merge_sales_marketing(df_marketing_clean, monthly_sales)
     sales_marketing.to_csv('sales_marketing.csv',index=False)
-
+    
+    # ROI по місяцях
     def monthly_roi(sales_marketing: pd.DataFrame) -> pd.DataFrame:
         df = sales_marketing.copy()
         df['roi'] = np.where(
@@ -151,5 +164,80 @@ def main():
     monthly_roi = monthly_roi(sales_marketing) # type: ignore
     monthly_roi.to_csv('monthly_roi.csv', index=False)
 
+    # Графік: Продажі vs Витрати
+    def plot_sales_vs_spend(sales_marketing: pd.DataFrame,  marketing_clean: pd.DataFrame):
+        # Лінія продажів
+        fig, ax = plt.subplots()
+
+        ax.plot(sales_marketing["month"], sales_marketing["total_sales"], color="black", label="Продажі")
+        ax.set_xlabel("Місяць")
+        ax.set_ylabel("Сума продажів")
+        ax.legend(loc="upper left")
+
+        plt.title("Продажі (лінія) та маркетингові витрати по каналах (стек)")
+    
+        # Підготуємо стек витрат по каналах
+        pivot = marketing_clean.pivot_table(
+            index="month", columns="channel", values="spend_amount", aggfunc="sum"
+        ).fillna(0)
+        # Впорядкуємо канали
+        cols = ["Facebook", "Google Ads", "Instagram", "TikTok", "YouTube"]
+        for c in cols:
+            if c not in pivot.columns:
+                pivot[c] = 0.0
+        pivot = pivot[cols].sort_index()
+
+        # Друга вісь для витрат
+        ax2 = ax.twinx()
+        ax2.stackplot(
+            pivot.index,
+            [pivot[c].values for c in cols], # type: ignore
+            labels=cols,
+            alpha=0.4
+        )
+        ax2.set_ylabel("Маркетингові витрати")
+        ax2.legend(loc="upper right")
+        plt.tight_layout()
+        plt.show()
+    
+    # plot_sales_vs_spend(sales_marketing, df_marketing_clean)
+    
+    # Таблиці для презентації топ-3 клієнтів
+    def build_top3_customers(orders_df: pd.DataFrame) -> pd.DataFrame:
+        top3 = (
+            orders_df.groupby("customer_id", as_index=False)
+            .agg(orders_count=("order_id", "count"), total_spent=("order_amount", "sum"))
+            .sort_values("total_spent", ascending=False)
+            .head(3)
+        )
+        return top3
+    
+    top3 = build_top3_customers(orders)
+    print(top3)
+
+    # Витрати по каналах і перевірка повноти
+    def extra_presentation_tables(sales_marketing: pd.DataFrame, marketing_clean: pd.DataFrame):
+        # Таблиця структури витрат по каналах
+        channel_pivot = (marketing_clean
+                        .pivot_table(index="month", columns="channel", values="spend_amount", aggfunc="sum")
+                        .reset_index())
+
+        # Зведення загальних витрат:
+        monthly_spend = (marketing_clean.groupby("month", as_index=False)
+                        .agg(marketing_spend=("spend_amount", "sum")))
+
+        # Злиття з продажами для компактної презентації
+        overview = sales_marketing[["month", "sales_sum", "orders_count", "marketing_spend"]].merge(
+            channel_pivot, on="month", how="left"
+        )
+
+        return {
+            "channel_pivot": channel_pivot,
+            "monthly_spend": monthly_spend,
+            "overview": overview
+        }
+    
+    tables = extra_presentation_tables(sales_marketing, df_marketing_clean)
+    
 if __name__ == '__main__':
     main()

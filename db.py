@@ -20,8 +20,8 @@ cur.executescript(sql_script)
 # Виконуємо SQL-запит:
 cur.execute('''
              SELECT *
-               FROM orders
-              LIMIT 5;
+             FROM orders
+             LIMIT 5;
             ''')
 
 # Виводимо результат запиту у консоль
